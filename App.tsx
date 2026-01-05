@@ -13,37 +13,6 @@ import SaasAdmin from './components/SaasAdmin';
 import Login from './components/Login';
 import { supabase } from './services/supabaseClient';
 
-/**
- * ⚡ SCRIPT SQL PARA SUPABASE (Ejecutar en SQL Editor)
- * --------------------------------------------------
- * -- Este script asegura que la columna email sea opcional y que los nulos no cuenten como duplicados
- * 
- * create table if not exists companies (id text primary key, name text, primary_color text, logo text, portal_hero text);
- * create table if not exists sedes (id text primary key, name text, address text, phone text, whatsapp text, availability jsonb, company_id text);
- * create table if not exists users (
- *    id text primary key, 
- *    name text not null, 
- *    email text unique, 
- *    access_key text, 
- *    role text, 
- *    company_id text, 
- *    sede_ids text[], 
- *    avatar text
- * );
- * create table if not exists professionals (id text primary key, name text, specialty text, avatar text, sede_ids text[], user_id text, company_id text);
- * create table if not exists patients (id text primary key, name text, email text, phone text, document_id text, birth_date text, company_id text);
- * create table if not exists appointments (id text primary key, patient_id text, patient_name text, patient_phone text, patient_dni text, date text, time text, status text, sede_id text, company_id text, booking_code text, service_id text, professional_id text, notes text);
- * create table if not exists clinical_history (id text primary key, patient_id text, date text, professional_id text, diagnosis text, notes text, recommendations text, appointment_id text);
- * 
- * alter table users disable row level security;
- * alter table companies disable row level security;
- * alter table sedes disable row level security;
- * alter table professionals disable row level security;
- * alter table patients disable row level security;
- * alter table appointments disable row level security;
- * alter table clinical_history disable row level security;
- */
-
 const CLINIC_ID = "feet-care-main";
 
 const INITIAL_CLINIC_CONFIG: Company = {
@@ -58,7 +27,22 @@ const generateUUID = () => crypto.randomUUID();
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [viewState, setViewState] = useState<ViewState>({ currentView: 'login' });
+  
+  // Lógica de enrutamiento inicial: Detectar si la URL contiene /portal
+  const getInitialView = (): ViewState['currentView'] => {
+    try {
+      const path = window.location.pathname + window.location.search;
+      if (path.includes('/portal')) return 'portal';
+    } catch (e) {
+      console.warn("No se pudo acceder a la ruta del navegador.");
+    }
+    return 'login';
+  };
+
+  const [viewState, setViewState] = useState<ViewState>({ 
+    currentView: getInitialView() 
+  });
+
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -67,7 +51,30 @@ const App: React.FC = () => {
   const [clinicConfig, setClinicConfig] = useState<Company>(INITIAL_CLINIC_CONFIG);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filtered variables for access control
+  // Manejar navegación con el botón "atrás" del navegador
+  useEffect(() => {
+    const handlePopState = () => {
+      setViewState({ currentView: getInitialView() });
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Función para cambiar de vista y actualizar la URL sin recargar
+  const navigateTo = (view: ViewState['currentView']) => {
+    try {
+      const newPath = view === 'portal' ? '/portal' : '/';
+      // Intentamos actualizar la URL, pero si falla por seguridad, continuamos con el cambio de estado
+      if (window.history && typeof window.history.pushState === 'function') {
+        window.history.pushState({}, '', newPath);
+      }
+    } catch (e) {
+      // Silenciamos el error de seguridad (pushState) en entornos de previsualización restringidos
+      console.warn("Navegación de URL limitada por el entorno:", e);
+    }
+    setViewState({ currentView: view });
+  };
+
   const filteredSedes = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.ADMIN) return sedes;
@@ -114,7 +121,6 @@ const App: React.FC = () => {
         ]);
 
         if (sData.data) setSedes(sData.data);
-        
         if (userData.data) {
           setUsers(userData.data.map(u => ({ 
             id: u.id, 
@@ -127,7 +133,6 @@ const App: React.FC = () => {
             avatar: u.avatar
           })));
         }
-
         if (profData.data) {
           setProfessionals(profData.data.map(p => ({ 
             ...p, 
@@ -136,43 +141,29 @@ const App: React.FC = () => {
             companyId: p.company_id || CLINIC_ID 
           })));
         }
-        
         if (pData.data) {
           const historyMap: Record<string, ClinicalHistoryEntry[]> = {};
           if (hData.data) {
             hData.data.forEach(h => {
               if (!historyMap[h.patient_id]) historyMap[h.patient_id] = [];
               historyMap[h.patient_id].push({
-                id: h.id, 
-                date: h.date, 
-                diagnosis: h.diagnosis, 
-                notes: h.notes, 
-                recommendations: h.recommendations, 
-                professionalId: h.professional_id, 
+                id: h.id, date: h.date, diagnosis: h.diagnosis, notes: h.notes, 
+                recommendations: h.recommendations, professionalId: h.professional_id, 
                 appointmentId: h.appointment_id
               });
             });
           }
           setPatients(pData.data.map(p => ({ 
             ...p, 
-            documentId: p.document_id, 
-            birthDate: p.birth_date, 
-            companyId: p.company_id || CLINIC_ID,
+            documentId: p.document_id, birthDate: p.birth_date, companyId: p.company_id || CLINIC_ID,
             history: (historyMap[p.id] || []).sort((a,b) => b.date.localeCompare(a.date))
           })));
         }
-
         if (aData.data) {
           setAppointments(aData.data.map(a => ({
-            ...a, 
-            patientName: a.patient_name, 
-            patientPhone: a.patient_phone, 
-            patientDni: a.patient_dni, 
-            patientId: a.patient_id, 
-            serviceId: a.service_id, 
-            sedeId: a.sede_id, 
-            professionalId: a.professional_id, 
-            bookingCode: a.booking_code, 
+            ...a, patientName: a.patient_name, patientPhone: a.patient_phone, 
+            patientDni: a.patient_dni, patientId: a.patient_id, serviceId: a.service_id, 
+            sedeId: a.sede_id, professionalId: a.professional_id, bookingCode: a.booking_code, 
             companyId: a.company_id || CLINIC_ID
           })));
         }
@@ -188,10 +179,7 @@ const App: React.FC = () => {
   const handleUpdateCompany = async (c: Company) => {
     try {
       const { error } = await supabase.from('companies').update({ 
-        name: c.name, 
-        primary_color: c.primaryColor, 
-        logo: c.logo, 
-        portal_hero: c.portalHero 
+        name: c.name, primary_color: c.primary_color, logo: c.logo, portal_hero: c.portal_hero 
       }).eq('id', c.id);
       if (error) throw error;
       setClinicConfig(c);
@@ -208,7 +196,6 @@ const App: React.FC = () => {
       const dbUser = { 
         id: user.id || generateUUID(), 
         name: user.name, 
-        // IMPORTANTE: Si el email es un string vacío, enviamos null para evitar errores de unicidad
         email: (user.email && user.email.trim() !== "") ? user.email.trim() : null, 
         access_key: user.accessKey, 
         role: user.role, 
@@ -216,22 +203,15 @@ const App: React.FC = () => {
         sede_ids: user.sedeIds || [], 
         avatar: user.avatar || ''
       };
-      
       const { error } = await supabase.from('users').insert([dbUser]);
-      
       if (error) {
-        if (error.code === '23505') {
-          throw new Error(`El correo "${user.email}" ya está registrado por otro usuario. Por favor usa uno distinto.`);
-        }
+        if (error.code === '23505') throw new Error(`El correo "${user.email}" ya está registrado.`);
         throw error;
       }
-      
       setUsers(prev => [...prev, { ...user, id: dbUser.id, email: dbUser.email || undefined }]);
       return true;
     } catch (err: any) {
-      console.error("DETALLE ERROR USUARIO:", err);
-      const msg = err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
-      alert("❌ Error al guardar usuario: " + msg);
+      alert("❌ Error: " + err.message);
       return false;
     }
   };
@@ -239,26 +219,18 @@ const App: React.FC = () => {
   const handleUpdateUser = async (u: User) => {
     try {
       const { error } = await supabase.from('users').update({ 
-        name: u.name, 
-        email: (u.email && u.email.trim() !== "") ? u.email.trim() : null, 
-        access_key: u.accessKey, 
-        role: u.role, 
-        sede_ids: u.sedeIds, 
-        avatar: u.avatar 
+        name: u.name, email: (u.email && u.email.trim() !== "") ? u.email.trim() : null, 
+        access_key: u.accessKey, role: u.role, sede_ids: u.sede_ids, avatar: u.avatar 
       }).eq('id', u.id);
-      
       if (error) {
-        if (error.code === '23505') {
-          throw new Error(`El correo "${u.email}" ya está en uso por otro usuario.`);
-        }
+        if (error.code === '23505') throw new Error(`El correo "${u.email}" ya está en uso.`);
         throw error;
       }
-
       setUsers(prev => prev.map(it => it.id === u.id ? u : it));
-      alert("✅ Usuario actualizado exitosamente.");
+      alert("✅ Usuario actualizado.");
       return true;
     } catch (err: any) {
-      alert("❌ Error: " + (err.message || JSON.stringify(err)));
+      alert("❌ Error: " + err.message);
       return false;
     }
   };
@@ -266,79 +238,58 @@ const App: React.FC = () => {
   const handleAddProfessional = async (p: Professional) => {
     try {
       const { error } = await supabase.from('professionals').insert([{
-        id: p.id,
-        name: p.name,
-        specialty: p.specialty,
-        avatar: p.avatar,
-        sede_ids: p.sedeIds,
-        user_id: p.userId,
-        company_id: clinicConfig.id
+        id: p.id, name: p.name, specialty: p.specialty, avatar: p.avatar,
+        sede_ids: p.sedeIds, user_id: p.userId, company_id: clinicConfig.id
       }]);
       if (error) throw error;
       setProfessionals(prev => [...prev, p]);
       return true;
     } catch (err: any) {
-      alert("❌ Error Especialista: " + (err.message || JSON.stringify(err)));
+      alert("❌ Error Especialista: " + err.message);
       return false;
     }
   };
 
   const handleAddAppointment = async (apt: Appointment) => {
     try {
+      // Fix: Corrected apt.booking_code to apt.bookingCode to match type definition in Appointment
       const { error } = await supabase.from('appointments').insert([{
-        id: apt.id,
-        patient_name: apt.patientName,
-        patient_phone: apt.patientPhone,
-        patient_dni: apt.patientDni,
-        patient_id: apt.patientId,
-        date: apt.date,
-        time: apt.time,
-        status: apt.status,
-        sede_id: apt.sedeId,
-        booking_code: apt.bookingCode,
-        company_id: clinicConfig.id,
-        service_id: apt.serviceId,
-        professional_id: apt.professionalId,
+        id: apt.id, patient_name: apt.patientName, patient_phone: apt.patientPhone, 
+        patient_dni: apt.patientDni, patient_id: apt.patientId, date: apt.date, 
+        time: apt.time, status: apt.status, sede_id: apt.sedeId, booking_code: apt.bookingCode, 
+        company_id: clinicConfig.id, service_id: apt.serviceId, professional_id: apt.professionalId, 
         notes: apt.notes || ''
       }]);
       if (error) throw error;
       setAppointments(prev => [...prev, apt]);
     } catch (err: any) {
-      alert("Error Cita: " + (err.message || JSON.stringify(err)));
+      alert("Error Cita: " + err.message);
     }
   };
 
   const handleUpdateAppointment = async (apt: Appointment) => {
     try {
       const { error } = await supabase.from('appointments').update({
-        patient_name: apt.patientName,
-        patient_phone: apt.patientPhone,
-        patient_dni: apt.patientDni,
-        status: apt.status,
-        notes: apt.notes
+        patient_name: apt.patientName, patient_phone: apt.patientPhone, patient_dni: apt.patientDni, 
+        status: apt.status, notes: apt.notes
       }).eq('id', apt.id);
       if (error) throw error;
       setAppointments(prev => prev.map(it => it.id === apt.id ? apt : it));
     } catch (err: any) {
-      alert("Error Actualizar: " + (err.message || JSON.stringify(err)));
+      alert("Error Actualizar: " + err.message);
     }
   };
 
   const handleAddPatient = async (p: Patient) => {
     try {
       const { error } = await supabase.from('patients').insert([{
-        id: p.id,
-        name: p.name,
-        document_id: p.documentId,
-        phone: p.phone,
-        email: p.email || '',
-        birth_date: p.birthDate,
-        company_id: clinicConfig.id
+        id: p.id, name: p.name, document_id: p.document_id, phone: p.phone, 
+        email: p.email || '', birth_date: p.birth_date, company_id: clinicConfig.id
       }]);
       if (error) throw error;
       setPatients(prev => [...prev, p]);
     } catch (err: any) {
-      alert("Error Paciente: " + (err.message || JSON.stringify(err)));
+      alert("Error Paciente: " + err.message);
     }
   };
 
@@ -347,29 +298,15 @@ const App: React.FC = () => {
     const aptId = generateUUID();
     try {
       await handleAddPatient({
-        id: patientId,
-        name: data.patientName,
-        phone: data.patientPhone,
-        email: data.patientEmail,
-        documentId: data.patientDni || '',
-        birthDate: '2000-01-01',
-        history: [],
-        companyId: clinicConfig.id
+        id: patientId, name: data.patientName, phone: data.patientPhone, 
+        email: data.patientEmail, documentId: data.patientDni || '', 
+        birthDate: '2000-01-01', history: [], companyId: clinicConfig.id
       });
       await handleAddAppointment({
-        id: aptId,
-        patientId,
-        patientName: data.patientName,
-        patientPhone: data.patientPhone,
-        patientDni: data.patientDni,
-        date: data.date,
-        time: data.time,
-        status: AppointmentStatus.PENDING,
-        sedeId: data.sedeId,
-        bookingCode: 'WEB-' + aptId.substring(0, 5).toUpperCase(),
-        companyId: clinicConfig.id,
-        serviceId: 's1',
-        professionalId: 'p1'
+        id: aptId, patientId, patientName: data.patientName, patientPhone: data.patientPhone, 
+        patientDni: data.patientDni, date: data.date, time: data.time, status: AppointmentStatus.PENDING, 
+        sedeId: data.sedeId, bookingCode: 'WEB-' + aptId.substring(0, 5).toUpperCase(), 
+        companyId: clinicConfig.id, serviceId: 's1', professionalId: 'p1'
       });
       return true;
     } catch (e) {
@@ -380,40 +317,30 @@ const App: React.FC = () => {
   const handleAddHistoryEntry = async (patientId: string, entry: ClinicalHistoryEntry) => {
     try {
       const { error } = await supabase.from('clinical_history').insert([{
-        id: entry.id,
-        patient_id: patientId,
-        date: entry.date,
-        professional_id: entry.professionalId,
-        diagnosis: entry.diagnosis,
-        notes: entry.notes,
-        recommendations: entry.recommendations,
+        id: entry.id, patient_id: patientId, date: entry.date, professional_id: entry.professionalId, 
+        diagnosis: entry.diagnosis, notes: entry.notes, recommendations: entry.recommendations, 
         appointment_id: entry.appointmentId
       }]);
       if (error) throw error;
       setPatients(prev => prev.map(p => p.id === patientId ? { ...p, history: [entry, ...p.history] } : p));
-      
       if (entry.appointmentId) {
         await supabase.from('appointments').update({ status: AppointmentStatus.ATTENDED }).eq('id', entry.appointmentId);
         setAppointments(prev => prev.map(a => a.id === entry.appointmentId ? { ...a, status: AppointmentStatus.ATTENDED } : a));
       }
     } catch (err: any) {
-      alert("Error Historia: " + (err.message || JSON.stringify(err)));
+      alert("Error Historia: " + err.message);
     }
   };
 
   const handleUpdateSede = async (s: Sede) => {
     try {
       const { error } = await supabase.from('sedes').update({
-        name: s.name,
-        address: s.address,
-        phone: s.phone,
-        whatsapp: s.whatsapp,
-        availability: s.availability
+        name: s.name, address: s.address, phone: s.phone, whatsapp: s.whatsapp, availability: s.availability
       }).eq('id', s.id);
       if (error) throw error;
       setSedes(prev => prev.map(it => it.id === s.id ? s : it));
     } catch (err: any) {
-      alert("Error Sede: " + (err.message || JSON.stringify(err)));
+      alert("Error Sede: " + err.message);
     }
   };
 
@@ -421,20 +348,15 @@ const App: React.FC = () => {
     try {
       const id = generateUUID();
       const { error } = await supabase.from('sedes').insert([{
-        id,
-        name: s.name,
-        address: s.address,
-        phone: s.phone,
-        whatsapp: s.whatsapp,
-        availability: s.availability,
-        company_id: clinicConfig.id
+        id, name: s.name, address: s.address, phone: s.phone, whatsapp: s.whatsapp, 
+        availability: s.availability, company_id: clinicConfig.id
       }]);
       if (error) throw error;
       const newSede = { ...s, id, companyId: clinicConfig.id };
       setSedes(prev => [...prev, newSede]);
       return newSede;
     } catch (err: any) {
-      alert("Error Crear Sede: " + (err.message || JSON.stringify(err)));
+      alert("Error Crear Sede: " + err.message);
       return null;
     }
   };
@@ -452,7 +374,7 @@ const App: React.FC = () => {
       <PatientPortal 
         company={clinicConfig} 
         sedes={sedes} 
-        onBack={() => setViewState({ currentView: 'login' })} 
+        onBack={() => navigateTo('login')} 
         onPortalBooking={handlePortalBooking} 
       />
     );
@@ -462,7 +384,10 @@ const App: React.FC = () => {
     return (
       <Login 
         users={users} 
-        onLogin={(user) => { setCurrentUser(user); setViewState({ currentView: 'dashboard' }); }} 
+        onLogin={(user) => { 
+          setCurrentUser(user); 
+          navigateTo('dashboard');
+        }} 
       />
     );
   }
@@ -471,9 +396,12 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-brand-bg flex font-inter text-brand-navy">
       <Sidebar 
         currentView={viewState.currentView} 
-        onViewChange={(v) => setViewState({ currentView: v })} 
+        onViewChange={(v) => navigateTo(v)} 
         userRole={currentUser?.role} 
-        onLogout={() => { setCurrentUser(null); setViewState({ currentView: 'login' }); }} 
+        onLogout={() => { 
+          setCurrentUser(null); 
+          navigateTo('login');
+        }} 
       />
       
       <div className="flex-1 ml-64 min-h-screen flex flex-col">
@@ -499,7 +427,7 @@ const App: React.FC = () => {
           {viewState.currentView === 'dashboard' && (
             <Dashboard 
               appointments={filteredAppointments} 
-              onNavigate={(v) => setViewState({ currentView: v as any })} 
+              onNavigate={(v) => navigateTo(v as any)} 
             />
           )}
 
@@ -510,7 +438,7 @@ const App: React.FC = () => {
               sedes={filteredSedes} 
               onUpdateAppointment={handleUpdateAppointment} 
               onAddAppointment={handleAddAppointment} 
-              onStartClinicalSession={(id) => setViewState({ currentView: 'clinical-record', activeAppointmentId: id })} 
+              onStartClinicalSession={(id) => setViewState({ ...viewState, currentView: 'clinical-record', activeAppointmentId: id })} 
               onAddPatient={handleAddPatient} 
             />
           )}
@@ -551,7 +479,7 @@ const App: React.FC = () => {
           {viewState.currentView === 'clinical-record' && viewState.activeAppointmentId && (
             <ClinicalRecordForm 
               appointment={appointments.find(a => a.id === viewState.activeAppointmentId)!}
-              onClose={() => setViewState({ currentView: 'appointments' })}
+              onClose={() => navigateTo('appointments')}
               onSaveRecord={handleAddHistoryEntry}
               onScheduleSessions={(f) => {
                 f.forEach(apt => handleAddAppointment(apt));
