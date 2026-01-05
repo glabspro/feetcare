@@ -1,0 +1,7 @@
+{
+  "name": "Bee - Gestión Clínica y Agendamiento",
+  "description": "Sistema integral para consultorios con gestión de historia clínica, estados de cita y portal de autogestión para pacientes.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
