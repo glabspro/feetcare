@@ -16,7 +16,8 @@ import {
   Trash2,
   Lock,
   Globe,
-  Key
+  Key,
+  Loader2
 } from 'lucide-react';
 import { Company, User, UserRole, Sede } from '../types';
 
@@ -25,9 +26,9 @@ interface SaasAdminProps {
   users: User[];
   sedes: Sede[];
   onAddCompany: (c: Company) => void;
-  onUpdateCompany: (c: Company) => void;
-  onAddUser: (u: User) => void;
-  onUpdateUser: (u: User) => void;
+  onUpdateCompany: (c: Company) => Promise<boolean>;
+  onAddUser: (u: User) => Promise<boolean>;
+  onUpdateUser: (u: User) => Promise<boolean>;
   userRole?: UserRole;
   currentCompanyId?: string;
 }
@@ -44,6 +45,7 @@ const SaasAdmin: React.FC<SaasAdminProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'settings' | 'users'>('settings');
   const [showUserModal, setShowUserModal] = useState<Partial<User> | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const activeClinic = useMemo(() => 
     companies.find(c => c.id === currentCompanyId), 
@@ -56,34 +58,42 @@ const SaasAdmin: React.FC<SaasAdminProps> = ({
     if (activeClinic) setBrandForm(activeClinic);
   }, [activeClinic]);
 
-  const handleUpdateBrand = (e: React.FormEvent) => {
+  const handleUpdateBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (brandForm.id) {
-      onUpdateCompany(brandForm as Company);
+      setIsSaving(true);
+      await onUpdateCompany(brandForm as Company);
+      setIsSaving(false);
     }
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!showUserModal?.name) return;
+    if (!showUserModal?.name || isSaving) return;
 
+    setIsSaving(true);
     const userToSave: User = {
-      id: showUserModal.id || '',
+      id: showUserModal.id || crypto.randomUUID(),
       name: showUserModal.name,
       email: showUserModal.email || '',
       accessKey: showUserModal.accessKey || '', 
       role: showUserModal.role || UserRole.RECEPCIONIST,
       sedeIds: showUserModal.sedeIds || [],
       companyId: currentCompanyId || 'feet-care-main',
-      avatar: showUserModal.avatar || `https://i.pravatar.cc/150?u=${showUserModal.email || showUserModal.name}`
+      avatar: showUserModal.avatar || `https://i.pravatar.cc/150?u=${showUserModal.id || showUserModal.name}`
     };
 
+    let success = false;
     if (showUserModal.id) {
-      onUpdateUser(userToSave);
+      success = await onUpdateUser(userToSave);
     } else {
-      onAddUser(userToSave);
+      success = await onAddUser(userToSave);
     }
-    setShowUserModal(null);
+
+    if (success) {
+      setShowUserModal(null);
+    }
+    setIsSaving(false);
   };
 
   return (
@@ -142,8 +152,9 @@ const SaasAdmin: React.FC<SaasAdminProps> = ({
                           <input className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-brand-primary text-xs font-medium outline-none shadow-inner" value={brandForm.portalHero || ''} onChange={e => setBrandForm({...brandForm, portalHero: e.target.value})} />
                        </div>
                     </div>
-                    <button type="submit" className="w-full py-5 bg-brand-navy text-white rounded-[2rem] font-bold flex items-center justify-center gap-3 shadow-2xl hover:bg-brand-primary transition-all">
-                       <Save size={18} /> Guardar Cambios en Sistema
+                    <button type="submit" disabled={isSaving} className="w-full py-5 bg-brand-navy text-white rounded-[2rem] font-bold flex items-center justify-center gap-3 shadow-2xl hover:bg-brand-primary transition-all disabled:opacity-50">
+                       {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={18} />}
+                       {isSaving ? 'Actualizando...' : 'Guardar Cambios en Sistema'}
                     </button>
                  </form>
               </div>
@@ -155,7 +166,7 @@ const SaasAdmin: React.FC<SaasAdminProps> = ({
                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent"></div>
                  <div className="relative z-10 flex justify-between items-start">
                     <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 text-[9px] font-bold uppercase tracking-widest">Vista Previa Portal</div>
-                    <div className="w-16 h-16 bg-white rounded-2xl p-2 flex items-center justify-center shadow-xl">
+                    <div className="w-16 h-16 bg-white rounded-2xl p-2 flex items-center justify-center shadow-xl overflow-hidden">
                        <img src={brandForm.logo} className="max-w-full max-h-full object-contain" alt="Logo" />
                     </div>
                  </div>
@@ -221,14 +232,13 @@ const SaasAdmin: React.FC<SaasAdminProps> = ({
           <div className="bg-white rounded-[3.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-fade-in">
             <div className="p-10 border-b border-slate-50 flex items-center justify-between">
               <h3 className="text-2xl font-ubuntu font-bold text-brand-navy">{showUserModal.id ? 'Editar Acceso' : 'Nuevo Acceso'}</h3>
-              <button onClick={() => setShowUserModal(null)} className="text-slate-300 hover:text-brand-navy"><X size={32} /></button>
+              <button onClick={() => { if(!isSaving) setShowUserModal(null); }} className="text-slate-300 hover:text-brand-navy"><X size={32} /></button>
             </div>
             <form onSubmit={handleSaveUser} className="p-10 space-y-6">
               
-              {/* PREVIEW DE FOTO */}
               <div className="flex justify-center mb-4">
                 <div className="w-24 h-24 rounded-[2rem] border-4 border-slate-50 overflow-hidden shadow-inner bg-slate-50 flex items-center justify-center">
-                   {showUserModal.avatar ? (
+                   {(showUserModal.avatar) ? (
                      <img src={showUserModal.avatar} className="w-full h-full object-cover" alt="Preview" />
                    ) : (
                      <ImageIcon size={32} className="text-slate-200" />
@@ -288,8 +298,9 @@ const SaasAdmin: React.FC<SaasAdminProps> = ({
                   </div>
                 </div>
               </div>
-              <button type="submit" className="w-full py-6 bg-brand-navy text-white rounded-3xl font-bold text-sm shadow-xl hover:bg-brand-primary transition-all flex items-center justify-center gap-3">
-                <CheckCircle size={20} /> Guardar Usuario
+              <button type="submit" disabled={isSaving} className="w-full py-6 bg-brand-navy text-white rounded-3xl font-bold text-sm shadow-xl hover:bg-brand-primary transition-all flex items-center justify-center gap-3 disabled:opacity-50">
+                {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
+                {isSaving ? 'Procesando...' : 'Guardar Usuario'}
               </button>
             </form>
           </div>

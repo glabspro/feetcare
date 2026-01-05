@@ -13,7 +13,8 @@ import {
   Building,
   Lock,
   ChevronDown,
-  ImageIcon
+  ImageIcon,
+  Loader2
 } from 'lucide-react';
 import { Professional, User, UserRole, Sede } from '../types';
 
@@ -21,8 +22,8 @@ interface StaffManagementProps {
   professionals: Professional[];
   users: User[];
   sedes: Sede[];
-  onAddProfessional: (p: Professional) => void;
-  onAddUser: (u: User) => void;
+  onAddProfessional: (p: Professional) => Promise<void>;
+  onAddUser: (u: User) => Promise<boolean>;
   currentCompanyId: string;
   userRole?: UserRole;
 }
@@ -38,6 +39,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'specialists' | 'staff'>('specialists');
   const [showModal, setShowModal] = useState<'specialist' | 'staff' | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   const isAdmin = userRole === UserRole.ADMIN || userRole === UserRole.SUPER_ADMIN;
 
@@ -58,9 +60,11 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
     selectedSedes: [] as string[]
   });
 
-  const handleAddSpecialist = (e: React.FormEvent) => {
+  const handleAddSpecialist = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!isAdmin || isSaving) return;
+    setIsSaving(true);
+    
     const userId = crypto.randomUUID();
     const avatarUrl = specialistForm.avatar || `https://i.pravatar.cc/150?u=${specialistForm.email || userId}`;
     
@@ -74,6 +78,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
       sedeIds: specialistForm.selectedSedes,
       avatar: avatarUrl
     };
+
     const newProf: Professional = {
       id: 'p-' + Math.random().toString(36).substr(2, 5),
       name: specialistForm.name,
@@ -83,15 +88,22 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
       userId: userId,
       avatar: avatarUrl
     };
-    onAddUser(newUser);
-    onAddProfessional(newProf);
-    setShowModal(null);
-    setSpecialistForm({ name: '', specialty: '', email: '', accessKey: '', avatar: '', selectedSedes: [] });
+
+    const success = await onAddUser(newUser);
+    if (success) {
+      await onAddProfessional(newProf);
+      alert("✅ Especialista guardado con éxito.");
+      setShowModal(null);
+      setSpecialistForm({ name: '', specialty: '', email: '', accessKey: '', avatar: '', selectedSedes: [] });
+    }
+    setIsSaving(false);
   };
 
-  const handleAddStaff = (e: React.FormEvent) => {
+  const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!isAdmin || isSaving) return;
+    setIsSaving(true);
+    
     const userId = crypto.randomUUID();
     const avatarUrl = staffForm.avatar || `https://i.pravatar.cc/150?u=${staffForm.accessKey || userId}`;
 
@@ -104,9 +116,14 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
       sedeIds: staffForm.selectedSedes,
       avatar: avatarUrl
     };
-    onAddUser(newUser);
-    setShowModal(null);
-    setStaffForm({ name: '', accessKey: '', role: UserRole.RECEPCIONIST, avatar: '', selectedSedes: [] });
+
+    const success = await onAddUser(newUser);
+    if (success) {
+      alert("✅ Usuario de staff guardado con éxito.");
+      setShowModal(null);
+      setStaffForm({ name: '', accessKey: '', role: UserRole.RECEPCIONIST, avatar: '', selectedSedes: [] });
+    }
+    setIsSaving(false);
   };
 
   return (
@@ -152,14 +169,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
         {activeTab === 'specialists' ? (
           professionals.map(p => (
             <div key={p.id} className="bg-white rounded-[3rem] border border-slate-100 p-8 clinical-shadow group relative overflow-hidden">
-               {isAdmin && (
-                 <div className="absolute right-0 top-0 p-6 flex gap-2 translate-x-10 group-hover:translate-x-0 transition-transform">
-                    <button className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-100 transition-colors"><Trash2 size={16} /></button>
-                 </div>
-               )}
                <div className="flex items-center gap-6 mb-8">
                   <div className="w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-slate-50 shadow-inner">
-                     <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" />
+                     <img src={p.avatar || `https://i.pravatar.cc/150?u=${p.id}`} alt={p.name} className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <h4 className="font-ubuntu font-bold text-xl text-brand-navy">{p.name}</h4>
@@ -214,7 +226,6 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
               </div>
               <form onSubmit={activeTab === 'specialists' ? handleAddSpecialist : handleAddStaff} className="px-10 pb-12 space-y-6">
                  
-                 {/* PREVIEW DE FOTO */}
                  <div className="flex justify-center mb-2">
                     <div className="w-24 h-24 rounded-[2rem] border-4 border-slate-100 overflow-hidden shadow-inner bg-slate-50 flex items-center justify-center">
                         {(activeTab === 'specialists' ? specialistForm.avatar : staffForm.avatar) ? (
@@ -288,8 +299,13 @@ const StaffManagement: React.FC<StaffManagementProps> = ({
                        ))}
                     </div>
                  </div>
-                 <button type="submit" className="w-full py-6 bg-brand-navy text-white rounded-[2rem] font-bold flex items-center justify-center gap-3">
-                    <CheckCircle size={20} /> Guardar Cambios
+                 <button 
+                    type="submit" 
+                    disabled={isSaving}
+                    className="w-full py-6 bg-brand-navy text-white rounded-[2rem] font-bold flex items-center justify-center gap-3 disabled:opacity-50"
+                 >
+                    {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
+                    {isSaving ? 'Guardando...' : 'Confirmar Registro'}
                  </button>
               </form>
            </div>
