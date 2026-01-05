@@ -28,7 +28,6 @@ const generateUUID = () => crypto.randomUUID();
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
-  // Lógica de enrutamiento inicial: Detectar si la URL contiene /portal
   const getInitialView = (): ViewState['currentView'] => {
     try {
       const path = window.location.pathname + window.location.search;
@@ -51,7 +50,6 @@ const App: React.FC = () => {
   const [clinicConfig, setClinicConfig] = useState<Company>(INITIAL_CLINIC_CONFIG);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Manejar navegación con el botón "atrás" del navegador
   useEffect(() => {
     const handlePopState = () => {
       setViewState({ currentView: getInitialView() });
@@ -60,16 +58,13 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Función para cambiar de vista y actualizar la URL sin recargar
   const navigateTo = (view: ViewState['currentView']) => {
     try {
       const newPath = view === 'portal' ? '/portal' : '/';
-      // Intentamos actualizar la URL, pero si falla por seguridad, continuamos con el cambio de estado
       if (window.history && typeof window.history.pushState === 'function') {
         window.history.pushState({}, '', newPath);
       }
     } catch (e) {
-      // Silenciamos el error de seguridad (pushState) en entornos de previsualización restringidos
       console.warn("Navegación de URL limitada por el entorno:", e);
     }
     setViewState({ currentView: view });
@@ -122,7 +117,7 @@ const App: React.FC = () => {
 
         if (sData.data) setSedes(sData.data);
         if (userData.data) {
-          setUsers(userData.data.map(u => ({ 
+          setUsers(userData.data.map((u: any) => ({ 
             id: u.id, 
             name: u.name, 
             email: u.email, 
@@ -134,7 +129,7 @@ const App: React.FC = () => {
           })));
         }
         if (profData.data) {
-          setProfessionals(profData.data.map(p => ({ 
+          setProfessionals(profData.data.map((p: any) => ({ 
             ...p, 
             sedeIds: p.sede_ids || [], 
             userId: p.user_id,
@@ -153,14 +148,14 @@ const App: React.FC = () => {
               });
             });
           }
-          setPatients(pData.data.map(p => ({ 
+          setPatients(pData.data.map((p: any) => ({ 
             ...p, 
             documentId: p.document_id, birthDate: p.birth_date, companyId: p.company_id || CLINIC_ID,
             history: (historyMap[p.id] || []).sort((a,b) => b.date.localeCompare(a.date))
           })));
         }
         if (aData.data) {
-          setAppointments(aData.data.map(a => ({
+          setAppointments(aData.data.map((a: any) => ({
             ...a, patientName: a.patient_name, patientPhone: a.patient_phone, 
             patientDni: a.patient_dni, patientId: a.patient_id, serviceId: a.service_id, 
             sedeId: a.sede_id, professionalId: a.professional_id, bookingCode: a.booking_code, 
@@ -179,8 +174,8 @@ const App: React.FC = () => {
   const handleUpdateCompany = async (c: Company) => {
     try {
       const { error } = await supabase.from('companies').update({ 
-        name: c.name, primary_color: c.primary_color, logo: c.logo, portal_hero: c.portal_hero 
-      }).eq('id', c.id);
+        name: c.name, primary_color: c.primaryColor, logo: c.logo, portal_hero: c.portalHero 
+      } as any).eq('id', c.id);
       if (error) throw error;
       setClinicConfig(c);
       alert("✅ Configuración de marca actualizada.");
@@ -220,8 +215,8 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('users').update({ 
         name: u.name, email: (u.email && u.email.trim() !== "") ? u.email.trim() : null, 
-        access_key: u.accessKey, role: u.role, sede_ids: u.sede_ids, avatar: u.avatar 
-      }).eq('id', u.id);
+        access_key: u.accessKey, role: u.role, sede_ids: u.sedeIds, avatar: u.avatar 
+      } as any).eq('id', u.id);
       if (error) {
         if (error.code === '23505') throw new Error(`El correo "${u.email}" ya está en uso.`);
         throw error;
@@ -240,7 +235,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from('professionals').insert([{
         id: p.id, name: p.name, specialty: p.specialty, avatar: p.avatar,
         sede_ids: p.sedeIds, user_id: p.userId, company_id: clinicConfig.id
-      }]);
+      } as any]);
       if (error) throw error;
       setProfessionals(prev => [...prev, p]);
       return true;
@@ -252,14 +247,13 @@ const App: React.FC = () => {
 
   const handleAddAppointment = async (apt: Appointment) => {
     try {
-      // Fix: Corrected apt.booking_code to apt.bookingCode to match type definition in Appointment
       const { error } = await supabase.from('appointments').insert([{
         id: apt.id, patient_name: apt.patientName, patient_phone: apt.patientPhone, 
         patient_dni: apt.patientDni, patient_id: apt.patientId, date: apt.date, 
         time: apt.time, status: apt.status, sede_id: apt.sedeId, booking_code: apt.bookingCode, 
         company_id: clinicConfig.id, service_id: apt.serviceId, professional_id: apt.professionalId, 
         notes: apt.notes || ''
-      }]);
+      } as any]);
       if (error) throw error;
       setAppointments(prev => [...prev, apt]);
     } catch (err: any) {
@@ -272,7 +266,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from('appointments').update({
         patient_name: apt.patientName, patient_phone: apt.patientPhone, patient_dni: apt.patientDni, 
         status: apt.status, notes: apt.notes
-      }).eq('id', apt.id);
+      } as any).eq('id', apt.id);
       if (error) throw error;
       setAppointments(prev => prev.map(it => it.id === apt.id ? apt : it));
     } catch (err: any) {
@@ -283,9 +277,9 @@ const App: React.FC = () => {
   const handleAddPatient = async (p: Patient) => {
     try {
       const { error } = await supabase.from('patients').insert([{
-        id: p.id, name: p.name, document_id: p.document_id, phone: p.phone, 
-        email: p.email || '', birth_date: p.birth_date, company_id: clinicConfig.id
-      }]);
+        id: p.id, name: p.name, document_id: p.documentId, phone: p.phone, 
+        email: p.email || '', birth_date: p.birthDate, company_id: clinicConfig.id
+      } as any]);
       if (error) throw error;
       setPatients(prev => [...prev, p]);
     } catch (err: any) {
@@ -320,11 +314,11 @@ const App: React.FC = () => {
         id: entry.id, patient_id: patientId, date: entry.date, professional_id: entry.professionalId, 
         diagnosis: entry.diagnosis, notes: entry.notes, recommendations: entry.recommendations, 
         appointment_id: entry.appointmentId
-      }]);
+      } as any]);
       if (error) throw error;
       setPatients(prev => prev.map(p => p.id === patientId ? { ...p, history: [entry, ...p.history] } : p));
       if (entry.appointmentId) {
-        await supabase.from('appointments').update({ status: AppointmentStatus.ATTENDED }).eq('id', entry.appointmentId);
+        await supabase.from('appointments').update({ status: AppointmentStatus.ATTENDED } as any).eq('id', entry.appointmentId);
         setAppointments(prev => prev.map(a => a.id === entry.appointmentId ? { ...a, status: AppointmentStatus.ATTENDED } : a));
       }
     } catch (err: any) {
@@ -336,7 +330,7 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('sedes').update({
         name: s.name, address: s.address, phone: s.phone, whatsapp: s.whatsapp, availability: s.availability
-      }).eq('id', s.id);
+      } as any).eq('id', s.id);
       if (error) throw error;
       setSedes(prev => prev.map(it => it.id === s.id ? s : it));
     } catch (err: any) {
@@ -350,7 +344,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from('sedes').insert([{
         id, name: s.name, address: s.address, phone: s.phone, whatsapp: s.whatsapp, 
         availability: s.availability, company_id: clinicConfig.id
-      }]);
+      } as any]);
       if (error) throw error;
       const newSede = { ...s, id, companyId: clinicConfig.id };
       setSedes(prev => [...prev, newSede]);
