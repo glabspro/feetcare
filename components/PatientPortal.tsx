@@ -14,11 +14,13 @@ import {
   Loader2,
   CalendarCheck,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Heart,
+  ExternalLink
 } from 'lucide-react';
 import { Sede, Company } from '../types';
 
-type Step = 'sede' | 'info' | 'schedule' | 'confirm';
+type Step = 'sede' | 'info' | 'schedule' | 'confirm' | 'success';
 
 interface PatientPortalProps {
   company: Company;
@@ -43,16 +45,20 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
 
   const primaryColor = company.primaryColor || '#00BFA5';
 
-  // Validación de teléfono: Debe tener exactamente 9 dígitos para Perú
   const isPhoneValid = useMemo(() => {
     const digits = booking.patientPhone.replace(/\D/g, '');
     return digits.length === 9;
   }, [booking.patientPhone]);
 
   const isInfoStepComplete = useMemo(() => {
-    // Nombre obligatorio (mínimo 3 letras) y Teléfono obligatorio (9 dígitos)
     return booking.patientName.trim().length >= 3 && isPhoneValid;
   }, [booking.patientName, isPhoneValid]);
+
+  const generateWaUrl = () => {
+    const clinicWhatsapp = booking.sede?.whatsapp || "51900000000"; 
+    const message = `Hola! Reservé una cita en ${company.name}:\n\n👤 *Nombre:* ${booking.patientName}\n📍 *Sede:* ${booking.sede?.name}\n📅 *Fecha:* ${booking.date}\n⏰ *Hora:* ${booking.time}\n\nEspero confirmación!`;
+    return `https://wa.me/${clinicWhatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+  };
 
   const handleConfirmBooking = async () => {
     setIsSubmitting(true);
@@ -67,13 +73,18 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
     });
 
     if (success) {
-      const clinicWhatsapp = booking.sede?.whatsapp || "51900000000"; 
-      const message = `Hola! Reservé una cita en ${company.name}:\n\n👤 *Nombre:* ${booking.patientName}\n📍 *Sede:* ${booking.sede?.name}\n📅 *Fecha:* ${booking.date}\n⏰ *Hora:* ${booking.time}\n\nEspero confirmación!`;
-      const waUrl = `https://wa.me/${clinicWhatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
-      window.open(waUrl, '_blank');
-      // No regresamos al login automáticamente para permitir que el usuario vea su acción finalizada si fuera necesario, 
-      // pero aquí cumplimos con el flujo de "onBack" si se requiere.
-      onBack();
+      // Intentamos abrir WhatsApp
+      const waUrl = generateWaUrl();
+      try {
+        window.open(waUrl, '_blank');
+      } catch (e) {
+        console.warn("Popup blocked by browser");
+      }
+      
+      // En lugar de llamar a onBack() que redirige al login, mostramos la pantalla de éxito
+      setStep('success');
+    } else {
+      alert("Hubo un problema al procesar su cita. Por favor intente nuevamente.");
     }
     setIsSubmitting(false);
   };
@@ -83,11 +94,11 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
   };
 
   const steps: Step[] = ['sede', 'info', 'schedule', 'confirm'];
-  const currentIdx = steps.indexOf(step);
+  const currentIdx = steps.indexOf(step === 'success' ? 'confirm' : step);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-inter overflow-x-hidden text-brand-navy">
-      {/* Header Fijo Minimalista (Sin botón Salir) */}
+      {/* Header Fijo Minimalista */}
       <nav className="bg-white/95 backdrop-blur-md border-b border-slate-100 px-6 py-4 flex items-center justify-center sticky top-0 z-[100] shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm transition-transform active:scale-95">
@@ -101,55 +112,51 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
       </nav>
 
       <main className="flex-1 flex flex-col items-center">
-        {/* Hero Section - Centrado Total con Fondo Dark Premium */}
-        <div className="w-full h-[360px] md:h-[480px] relative overflow-hidden flex items-center justify-center bg-[#0D0D33]">
-           <div className="absolute inset-0 bg-gradient-to-b from-[#0D0D33]/60 via-[#0D0D33]/80 to-[#F8FAFC]"></div>
-           
-           <div className="relative z-10 text-center px-6 max-w-2xl animate-fade-in flex flex-col items-center">
-              <div className="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center shadow-2xl mb-8 border border-white/10 animate-pulse">
-                <Zap className="text-white fill-white" size={32} />
-              </div>
-              
-              <h1 className="text-white text-4xl md:text-7xl font-ubuntu font-bold tracking-tight drop-shadow-2xl text-balance leading-[1.1]">
-                Cuidado experto <br/> para tus <span className="text-brand-primary italic">pies</span>
-              </h1>
-              
-              <p className="text-slate-300 font-medium text-base md:text-2xl mt-8 max-w-md mx-auto leading-relaxed drop-shadow-lg">
-                Agenda tu atención profesional hoy mismo desde tu celular.
-              </p>
-
-              <div className="mt-6 flex items-center gap-2 px-4 py-2 bg-white/5 backdrop-blur-md rounded-full border border-white/10">
-                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse"></div>
-                <span className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Servidor de Agendamiento Activo</span>
-              </div>
-           </div>
-        </div>
+        {/* Hero Section */}
+        {step !== 'success' && (
+          <div className="w-full h-[360px] md:h-[480px] relative overflow-hidden flex items-center justify-center bg-[#0D0D33]">
+             <div className="absolute inset-0 bg-gradient-to-b from-[#0D0D33]/60 via-[#0D0D33]/80 to-[#F8FAFC]"></div>
+             <div className="relative z-10 text-center px-6 max-w-2xl animate-fade-in flex flex-col items-center">
+                <div className="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center shadow-2xl mb-8 border border-white/10 animate-pulse">
+                  <Zap className="text-white fill-white" size={32} />
+                </div>
+                <h1 className="text-white text-4xl md:text-7xl font-ubuntu font-bold tracking-tight drop-shadow-2xl text-balance leading-[1.1]">
+                  Cuidado experto <br/> para tus <span className="text-brand-primary italic">pies</span>
+                </h1>
+                <p className="text-slate-300 font-medium text-base md:text-2xl mt-8 max-w-md mx-auto leading-relaxed drop-shadow-lg">
+                  Agenda tu atención profesional hoy mismo desde tu celular.
+                </p>
+             </div>
+          </div>
+        )}
 
         {/* Flujo Principal */}
-        <div className="max-w-4xl w-full -mt-16 relative z-20 px-4 pb-24">
+        <div className={`max-w-4xl w-full relative z-20 px-4 pb-24 ${step === 'success' ? 'mt-10 md:mt-20' : '-mt-16'}`}>
             
-            {/* Indicador de Progreso */}
-            <div className="flex items-center justify-between gap-2 mb-8 overflow-x-auto no-scrollbar py-5 bg-white/95 backdrop-blur-md rounded-[2.5rem] px-8 shadow-[0_20px_40px_rgba(0,0,0,0.06)] border border-white">
-            {steps.map((s, idx) => (
-                <React.Fragment key={s}>
-                    <div className="flex flex-col items-center gap-1.5 shrink-0">
-                        <div 
-                            className={`w-10 h-10 rounded-2xl flex items-center justify-center text-[11px] font-bold transition-all duration-500 ${
-                            idx < currentIdx ? 'bg-green-100 text-brand-primary' : 
-                            idx === currentIdx ? 'text-white shadow-xl scale-110 ring-4 ring-brand-primary/10' : 
-                            'bg-slate-50 text-slate-300'
-                            }`} 
-                            style={{ backgroundColor: idx === currentIdx ? primaryColor : undefined }}
-                        >
-                            {idx < currentIdx ? <CheckCircle2 size={18} /> : idx + 1}
-                        </div>
-                    </div>
-                    {idx < steps.length - 1 && (
-                        <div className={`flex-1 min-w-[20px] h-[2px] rounded-full transition-all duration-500 ${idx < currentIdx ? 'opacity-100' : 'bg-slate-100'}`} style={{ backgroundColor: idx < currentIdx ? primaryColor : undefined }} />
-                    )}
-                </React.Fragment>
-            ))}
-            </div>
+            {/* Indicador de Progreso (Oculto en Success) */}
+            {step !== 'success' && (
+              <div className="flex items-center justify-between gap-2 mb-8 overflow-x-auto no-scrollbar py-5 bg-white/95 backdrop-blur-md rounded-[2.5rem] px-8 shadow-[0_20px_40px_rgba(0,0,0,0.06)] border border-white">
+              {steps.map((s, idx) => (
+                  <React.Fragment key={s}>
+                      <div className="flex flex-col items-center gap-1.5 shrink-0">
+                          <div 
+                              className={`w-10 h-10 rounded-2xl flex items-center justify-center text-[11px] font-bold transition-all duration-500 ${
+                              idx < currentIdx ? 'bg-green-100 text-brand-primary' : 
+                              idx === currentIdx ? 'text-white shadow-xl scale-110 ring-4 ring-brand-primary/10' : 
+                              'bg-slate-50 text-slate-300'
+                              }`} 
+                              style={{ backgroundColor: idx === currentIdx ? primaryColor : undefined }}
+                          >
+                              {idx < currentIdx ? <CheckCircle2 size={18} /> : idx + 1}
+                          </div>
+                      </div>
+                      {idx < steps.length - 1 && (
+                          <div className={`flex-1 min-w-[20px] h-[2px] rounded-full transition-all duration-500 ${idx < currentIdx ? 'opacity-100' : 'bg-slate-100'}`} style={{ backgroundColor: idx < currentIdx ? primaryColor : undefined }} />
+                      )}
+                  </React.Fragment>
+              ))}
+              </div>
+            )}
 
             {/* Tarjeta de Formulario */}
             <div className="bg-white rounded-[3rem] shadow-[0_40px_80px_rgba(0,0,0,0.08)] border border-slate-50 overflow-hidden flex flex-col min-h-[550px]">
@@ -179,15 +186,10 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                                       <Navigation size={20} />
                                     </a>
                                   </div>
-                                  
                                   <div className="flex-1">
                                     <h4 className="font-ubuntu font-bold text-xl group-hover:text-brand-primary transition-colors mb-2">{s.name}</h4>
                                     <p className="text-[13px] text-slate-500 font-medium leading-relaxed">{s.address}</p>
-                                    <div className="mt-5 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 w-fit px-3 py-1.5 rounded-lg">
-                                        <Phone size={12} className="text-brand-primary" /> Disponible
-                                    </div>
                                   </div>
-
                                   <button 
                                     onClick={() => { setBooking(prev => ({...prev, sede: s})); setStep('info'); }}
                                     className="mt-8 w-full py-5 rounded-[1.5rem] text-white font-bold text-[11px] uppercase tracking-[0.2em] shadow-lg transition-all active:scale-95 flex items-center justify-center gap-3 hover:brightness-110"
@@ -207,7 +209,7 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                   <div className="p-8 md:p-14 space-y-10 animate-fade-in max-w-xl mx-auto w-full flex-1 flex flex-col justify-center">
                     <div className="text-center">
                       <h2 className="text-3xl font-ubuntu font-bold text-brand-navy">Tus Datos</h2>
-                      <p className="text-slate-400 text-sm font-medium mt-2">Completa tu información para agendar en <b>Podología Integral</b>.</p>
+                      <p className="text-slate-400 text-sm font-medium mt-2">Completa tu información para agendar tu atención.</p>
                     </div>
 
                     <div className="space-y-6">
@@ -246,11 +248,6 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                                   placeholder="987654321" 
                                 />
                               </div>
-                              {booking.patientPhone.length > 0 && !isPhoneValid && (
-                                <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest mt-2 ml-1 flex items-center gap-1 animate-pulse">
-                                  <AlertCircle size={12} /> El número debe tener 9 dígitos
-                                </p>
-                              )}
                           </div>
                           <div className="space-y-2">
                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
@@ -277,11 +274,7 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                             Ver Disponibilidad <ArrowRight size={20} />
                           </button>
                         </div>
-                        
-                        <button 
-                          onClick={() => setStep('sede')} 
-                          className="w-full text-slate-300 font-bold text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:text-brand-navy transition-colors mt-6"
-                        >
+                        <button onClick={() => setStep('sede')} className="w-full text-slate-300 font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 mt-6">
                           <ArrowLeft size={12} /> Regresar a Sedes
                         </button>
                     </div>
@@ -295,7 +288,6 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                       <h2 className="text-3xl font-ubuntu font-bold text-brand-navy">Horarios Disponibles</h2>
                       <p className="text-slate-400 text-sm font-medium mt-2">Selecciona la fecha y hora de tu preferencia.</p>
                     </div>
-
                     <div className="space-y-8">
                       <div className="relative max-w-xs mx-auto">
                         <Calendar className="absolute left-6 top-1/2 -translate-y-1/2 text-brand-primary" size={22} />
@@ -308,9 +300,8 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                           style={{ '--tw-ring-color': primaryColor } as any} 
                         />
                       </div>
-
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                          {['09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map(t => (
+                          {['09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map(t => (
                               <button 
                                 key={t} 
                                 onClick={() => setBooking(prev => ({...prev, time: t}))} 
@@ -324,7 +315,6 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                               </button>
                           ))}
                       </div>
-
                       <div className="pt-6">
                         <button 
                           disabled={!booking.time} 
@@ -334,7 +324,6 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                         >
                           Confirmar Selección <ArrowRight size={20} />
                         </button>
-                        <button onClick={() => setStep('info')} className="mt-6 text-slate-300 font-bold text-[10px] uppercase tracking-widest hover:text-brand-navy transition-all">Modificar mis datos</button>
                       </div>
                     </div>
                   </div>
@@ -344,11 +333,10 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                 {step === 'confirm' && (
                   <div className="p-8 md:p-14 space-y-10 animate-fade-in max-w-xl mx-auto w-full flex-1 flex flex-col justify-center">
                     <div className="text-center">
-                      <h2 className="text-3xl font-ubuntu font-bold text-brand-navy">Confirmación</h2>
-                      <p className="text-slate-400 text-sm font-medium mt-2">Verifica los detalles de tu cita.</p>
+                      <h2 className="text-3xl font-ubuntu font-bold text-brand-navy">Resumen de Cita</h2>
+                      <p className="text-slate-400 text-sm font-medium mt-2">Verifica los detalles antes de finalizar.</p>
                     </div>
-
-                    <div className="bg-slate-50/70 rounded-[2.5rem] p-8 border border-slate-100 shadow-inner space-y-6">
+                    <div className="bg-slate-50/70 rounded-[2.5rem] p-8 border border-slate-100 shadow-inner space-y-6 text-left">
                         <div className="flex items-center gap-5 pb-6 border-b border-slate-200">
                           <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-brand-navy shadow-sm border border-slate-100 font-ubuntu font-bold text-3xl">
                             {booking.patientName.charAt(0)}
@@ -358,47 +346,72 @@ const PatientPortal: React.FC<PatientPortalProps> = ({ company, sedes, onBack, o
                             <p className="text-xl font-ubuntu font-bold text-brand-navy leading-tight">{booking.patientName}</p>
                           </div>
                         </div>
-
                         <div className="space-y-5">
                           <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-brand-primary border border-slate-100 shadow-sm shrink-0">
-                                <MapPin size={20} />
-                            </div>
+                            <MapPin size={20} className="text-brand-primary shrink-0" />
                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sede de Atención</p>
-                                <p className="font-bold text-brand-navy text-base leading-tight mt-0.5">{booking.sede?.name}</p>
-                                <p className="text-[10px] text-slate-400 mt-1">{booking.sede?.address}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sede</p>
+                                <p className="font-bold text-brand-navy text-base">{booking.sede?.name}</p>
                             </div>
                           </div>
-                          
                           <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-brand-primary border border-slate-100 shadow-sm shrink-0">
-                                <CalendarCheck size={20} />
-                            </div>
+                            <CalendarCheck size={20} className="text-brand-primary shrink-0" />
                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha y Horario</p>
-                                <p className="font-ubuntu font-bold text-lg mt-0.5" style={{ color: primaryColor }}>{booking.date} — {booking.time}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha y Hora</p>
+                                <p className="font-ubuntu font-bold text-lg" style={{ color: primaryColor }}>{booking.date} — {booking.time}</p>
                             </div>
                           </div>
                         </div>
                     </div>
+                    <button 
+                      disabled={isSubmitting} 
+                      onClick={handleConfirmBooking} 
+                      className="w-full py-6 text-white rounded-[2rem] font-bold text-lg shadow-[0_20px_50px_-10px_rgba(34,197,94,0.4)] flex items-center justify-center gap-4 transition-all active:scale-95 disabled:opacity-50 hover:brightness-110" 
+                      style={{ backgroundColor: '#22C55E' }}
+                    >
+                        {isSubmitting ? (
+                          <Loader2 size={24} className="animate-spin" />
+                        ) : (
+                          <><MessageCircle size={32} /> Confirmar en WhatsApp</>
+                        )}
+                    </button>
+                  </div>
+                )}
 
-                    <div className="space-y-6">
-                      <button 
-                        disabled={isSubmitting} 
-                        onClick={handleConfirmBooking} 
-                        className="w-full py-6 text-white rounded-[2rem] font-bold text-lg shadow-[0_20px_50px_-10px_rgba(34,197,94,0.4)] flex items-center justify-center gap-4 transition-all active:scale-95 disabled:opacity-50 hover:brightness-110" 
-                        style={{ backgroundColor: '#22C55E' }}
-                      >
-                          {isSubmitting ? (
-                            <Loader2 size={24} className="animate-spin" />
-                          ) : (
-                            <><MessageCircle size={32} /> Finalizar en WhatsApp</>
-                          )}
-                      </button>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase text-center tracking-widest leading-relaxed px-6">
-                         Se enviará una solicitud directa a la sede para validar disponibilidad de tu atención de <b>Podología Integral</b>.
+                {/* Paso 5: Éxito Final (NUEVO) */}
+                {step === 'success' && (
+                  <div className="p-8 md:p-16 space-y-12 animate-fade-in text-center flex-1 flex flex-col justify-center items-center">
+                    <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center shadow-xl mb-6">
+                      <CheckCircle2 size={56} />
+                    </div>
+                    <div>
+                      <h2 className="text-4xl font-ubuntu font-bold text-brand-navy">¡Cita Registrada!</h2>
+                      <p className="text-slate-500 text-base font-medium mt-4 max-w-md mx-auto leading-relaxed">
+                        Tu solicitud ha sido enviada con éxito. Para asegurar tu espacio, <b>debes confirmar</b> con la sede vía WhatsApp.
                       </p>
+                    </div>
+
+                    <div className="w-full space-y-4">
+                      <a 
+                        href={generateWaUrl()} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="w-full py-6 bg-green-500 text-white rounded-[2rem] font-bold text-lg flex items-center justify-center gap-4 hover:bg-green-600 transition-all shadow-xl shadow-green-500/20 active:scale-95"
+                      >
+                        <MessageCircle size={32} /> Abrir WhatsApp Ahora <ExternalLink size={18} />
+                      </a>
+                      
+                      <button 
+                        onClick={onBack}
+                        className="w-full py-5 bg-slate-100 text-slate-400 rounded-[2rem] font-bold text-sm hover:bg-slate-200 transition-all uppercase tracking-widest"
+                      >
+                        Volver al Inicio
+                      </button>
+                    </div>
+
+                    <div className="pt-8 flex items-center justify-center gap-2 text-slate-300">
+                      <Heart size={14} className="fill-current" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Gracias por elegir {company.name}</span>
                     </div>
                   </div>
                 )}
